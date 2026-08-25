@@ -79,16 +79,23 @@ spec:
             args:
             - |
               set -eu
-              apk add --no-cache aws-cli curl bash >/dev/null
+              apk add --no-cache aws-cli curl >/dev/null
               curl -sLo /usr/local/bin/kubectl https://dl.k8s.io/release/v1.33.0/bin/linux/amd64/kubectl
               chmod +x /usr/local/bin/kubectl
               TAG="backup-$(date -u +%Y%m%d-%H%M%S)"
               DEST="s3://${BUCKET}/${KEYSPACE}/${TAG}.tgz"
+              WORK="$(mktemp -d)"
               echo ">> snapshot ${KEYSPACE} on ${POD} as ${TAG}"
               kubectl -n "${NS}" exec "${POD}" -c scylla -- nodetool snapshot -t "${TAG}" "${KEYSPACE}"
-              echo ">> upload to ${DEST}"
-              kubectl -n "${NS}" exec "${POD}" -c scylla -- \
-                bash -c "cd /var/lib/scylla/data && tar czf - \$(find ${KEYSPACE} -type d -path '*/snapshots/${TAG}')" \
-                | aws s3 cp - "${DEST}"
+              echo ">> pulling SSTables (no tar in scylla image)"
+              FILES="$(kubectl -n "${NS}" exec "${POD}" -c scylla -- sh -c "cd /var/lib/scylla/data && find ${KEYSPACE} -type f -path '*/snapshots/${TAG}/*'")"
+              echo "${FILES}" | while IFS= read -r f; do
+                [ -z "${f}" ] && continue
+                mkdir -p "${WORK}/$(dirname "${f}")"
+                kubectl -n "${NS}" exec "${POD}" -c scylla -- cat "/var/lib/scylla/data/${f}" > "${WORK}/${f}"
+              done
+              echo ">> packaging and uploading to ${DEST}"
+              tar czf - -C "${WORK}" "${KEYSPACE}" | aws s3 cp - "${DEST}"
               kubectl -n "${NS}" exec "${POD}" -c scylla -- nodetool clearsnapshot -t "${TAG}" "${KEYSPACE}"
+              rm -rf "${WORK}"
               echo ">> done: ${DEST}"
