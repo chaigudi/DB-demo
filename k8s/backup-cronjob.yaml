@@ -1,0 +1,94 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: scylla-backup
+  namespace: scylla
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: scylla-backup
+  namespace: scylla
+rules:
+- apiGroups: [""]
+  resources: ["pods"]
+  verbs: ["get", "list"]
+- apiGroups: [""]
+  resources: ["pods/exec"]
+  verbs: ["create"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: scylla-backup
+  namespace: scylla
+subjects:
+- kind: ServiceAccount
+  name: scylla-backup
+  namespace: scylla
+roleRef:
+  kind: Role
+  name: scylla-backup
+  apiGroup: rbac.authorization.k8s.io
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: scylla-backup
+  namespace: scylla
+spec:
+  schedule: "0 2 * * *"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      template:
+        spec:
+          serviceAccountName: scylla-backup
+          restartPolicy: Never
+          tolerations:
+          - key: scylla.scylladb.com/dedicated
+            operator: Equal
+            value: "true"
+            effect: NoSchedule
+          affinity:
+            nodeAffinity:
+              requiredDuringSchedulingIgnoredDuringExecution:
+                nodeSelectorTerms:
+                - matchExpressions:
+                  - key: scylla.scylladb.com/node-pool
+                    operator: In
+                    values: ["scylla"]
+          containers:
+          - name: backup
+            image: alpine:3.20
+            env:
+            - name: NS
+              value: "scylla"
+            - name: KEYSPACE
+              value: "demo"
+            - name: BUCKET
+              value: "chaithu-backup-scylla"
+            - name: POD
+              value: "scylladb-dc1-us-east-1a-0"
+            - name: AWS_REGION
+              value: "us-east-1"
+            command: ["/bin/sh", "-c"]
+            args:
+            - |
+              set -eu
+              apk add --no-cache aws-cli curl bash >/dev/null
+              curl -sLo /usr/local/bin/kubectl https://dl.k8s.io/release/v1.33.0/bin/linux/amd64/kubectl
+              chmod +x /usr/local/bin/kubectl
+              TAG="backup-$(date -u +%Y%m%d-%H%M%S)"
+              DEST="s3://${BUCKET}/${KEYSPACE}/${TAG}.tgz"
+              echo ">> snapshot ${KEYSPACE} on ${POD} as ${TAG}"
+              kubectl -n "${NS}" exec "${POD}" -c scylla -- nodetool snapshot -t "${TAG}" "${KEYSPACE}"
+              echo ">> upload to ${DEST}"
+              kubectl -n "${NS}" exec "${POD}" -c scylla -- \
+                bash -c "cd /var/lib/scylla/data && tar czf - \$(find ${KEYSPACE} -type d -path '*/snapshots/${TAG}')" \
+                | aws s3 cp - "${DEST}"
+              kubectl -n "${NS}" exec "${POD}" -c scylla -- nodetool clearsnapshot -t "${TAG}" "${KEYSPACE}"
+              echo ">> done: ${DEST}"

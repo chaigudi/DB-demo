@@ -1,0 +1,9 @@
+spec:
+  backups:
+  - name: daily
+    location:
+    - s3:chaithu-scylla-backups
+    keyspace:
+    - demo
+    retention: 3
+    cron: "0 2 * * *"

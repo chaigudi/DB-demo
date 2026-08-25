@@ -11,8 +11,10 @@ Spins up a production-minded EKS cluster sized to run a **3-to-5 node ScyllaDB c
 | `system` node group | 2× `m6i.large`, untainted — operator, manager, cert-manager, autoscaler |
 | `scylla` node group | `r6i.xlarge`, **min 3 / max 5**, tainted `scylla.scylladb.com/dedicated` |
 | Addons | CoreDNS, kube-proxy, VPC CNI, Pod Identity agent, EBS CSI driver (IRSA) |
-| IRSA roles | EBS CSI, Cluster Autoscaler, and a bucket-scoped ScyllaDB S3 backup role |
-| Remote state | `bootstrap/` creates an S3 state bucket (versioned, encrypted, private) + DynamoDB lock table |
+| IRSA roles | EBS CSI and Cluster Autoscaler |
+| S3 backup access | Bucket-scoped IAM policy attached to the Scylla node group instance role (keyless; agent uses the instance profile) |
+| In-cluster runbook | `STEPS.md` — operator, cluster, data, resilience, scale, backup/restore |
+| Remote state | `bootstrap/` creates an S3 state bucket (versioned, encrypted, private); locking via native S3 `use_lockfile` (Terraform ≥ 1.11) |
 
 ## Sizing decisions
 
@@ -25,7 +27,7 @@ Spins up a production-minded EKS cluster sized to run a **3-to-5 node ScyllaDB c
 
 ## Remote state (do this first)
 
-State lives in S3 with DynamoDB locking. The `bootstrap/` config creates that bucket + lock table with local state (the one thing that cannot live in remote state, since it must exist before the backend does).
+State lives in S3, locked with the backend's native `use_lockfile` (Terraform ≥ 1.11 — no DynamoDB table needed). The `bootstrap/` config creates that bucket with local state (it must exist before the backend does).
 
 ```bash
 cd bootstrap
@@ -52,7 +54,7 @@ $(terraform output -raw update_kubeconfig_command)
 Then install the in-cluster pieces (kept out of Terraform to keep a single clean apply):
 
 ```bash
-kubectl apply -f ../k8s/storageclass.yaml       # gp3, allowVolumeExpansion: true
+kubectl apply -f k8s/storageclass.yaml          # gp3, allowVolumeExpansion: true
 
 helm repo add autoscaler https://kubernetes.github.io/autoscaler && helm repo update
 helm install cluster-autoscaler autoscaler/cluster-autoscaler \

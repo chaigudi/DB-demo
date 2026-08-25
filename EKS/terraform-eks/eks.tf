@@ -47,6 +47,10 @@ module "eks" {
         "scylla.scylladb.com/node-pool" = "scylla"
       }
 
+      iam_role_additional_policies = {
+        scylla_s3 = aws_iam_policy.scylla_s3.arn
+      }
+
       taints = {
         dedicated = {
           key    = "scylla.scylladb.com/dedicated"
@@ -71,6 +75,16 @@ module "eks" {
         "k8s.io/cluster-autoscaler/enabled"             = "true"
         "k8s.io/cluster-autoscaler/${var.cluster_name}" = "owned"
       }
+    }
+  }
+  node_security_group_additional_rules = {
+    scylla_operator_webhook = {
+      description                   = "EKS control plane to scylla-operator webhook"
+      protocol                      = "tcp"
+      from_port                     = 5000
+      to_port                       = 5000
+      type                          = "ingress"
+      source_cluster_security_group = true
     }
   }
 }

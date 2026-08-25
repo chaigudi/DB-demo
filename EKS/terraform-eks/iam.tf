@@ -50,21 +50,3 @@ resource "aws_iam_policy" "scylla_s3" {
   name   = "${var.cluster_name}-scylla-s3-backup"
   policy = data.aws_iam_policy_document.scylla_s3.json
 }
-
-module "irsa_scylla_s3" {
-  source  = "terraform-aws-modules/iam/aws//modules/iam-role-for-service-accounts-eks"
-  version = "~> 5.44"
-
-  role_name = "${var.cluster_name}-scylla-s3"
-
-  role_policy_arns = {
-    s3 = aws_iam_policy.scylla_s3.arn
-  }
-
-  oidc_providers = {
-    main = {
-      provider_arn               = module.eks.oidc_provider_arn
-      namespace_service_accounts = ["scylla:scylla-member"]
-    }
-  }
-}

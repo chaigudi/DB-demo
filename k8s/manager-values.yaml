@@ -1,0 +1,29 @@
+scylla:
+  developerMode: true
+  racks:
+    - name: manager-rack
+      members: 1
+      storage:
+        capacity: 5Gi
+        storageClassName: scylladb-gp3
+      resources:
+        requests:
+          cpu: 500m
+          memory: 2Gi
+        limits:
+          cpu: "1"
+          memory: 2Gi
+      placement:
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+              - matchExpressions:
+                  - key: scylla.scylladb.com/node-pool
+                    operator: In
+                    values:
+                      - scylla
+        tolerations:
+          - effect: NoSchedule
+            key: scylla.scylladb.com/dedicated
+            operator: Equal
+            value: "true"

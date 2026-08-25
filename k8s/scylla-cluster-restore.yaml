@@ -1,0 +1,39 @@
+apiVersion: scylla.scylladb.com/v1
+kind: ScyllaCluster
+metadata:
+  name: scylladb-restore
+  namespace: scylla
+spec:
+  version: "2026.1.3"
+  agentVersion: "3.5.0"
+  developerMode: false
+  datacenter:
+    name: dc1
+    racks:
+    - name: rack1
+      members: 3
+      scyllaConfig: scylla-config
+      storage:
+        capacity: 100Gi
+        storageClassName: scylladb-gp3
+      resources:
+        requests:
+          cpu: 3
+          memory: 24Gi
+        limits:
+          cpu: 3
+          memory: 24Gi
+      placement:
+        tolerations:
+        - key: scylla.scylladb.com/dedicated
+          operator: Equal
+          value: "true"
+          effect: NoSchedule
+        nodeAffinity:
+          requiredDuringSchedulingIgnoredDuringExecution:
+            nodeSelectorTerms:
+            - matchExpressions:
+              - key: scylla.scylladb.com/node-pool
+                operator: In
+                values:
+                - scylla
