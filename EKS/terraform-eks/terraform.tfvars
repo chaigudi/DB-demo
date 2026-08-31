@@ -1,0 +1,9 @@
+region               = "us-east-1"
+cluster_name          = "scylla-assessment"
+kubernetes_version    = "1.33"
+scylla_instance_type  = "r6i.xlarge"
+scylla_min_nodes      = 3
+scylla_max_nodes      = 5
+system_instance_type  = "m6i.large"
+s3_backup_bucket      = "chaithu-backup-scylla"
+github_repo = "chaigudi@116893885/DB-demo@1345577746"
